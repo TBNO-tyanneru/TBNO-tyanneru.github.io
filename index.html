@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ゴジバト風バトルシミュレーター</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #1a1a2e; color: #eee; display: flex; justify-content: center; padding: 20px; }
+
+    .container {
+      display: grid;
+      grid-template-columns: 260px 1fr 330px;
+      gap: 12px;
+      max-width: 1500px;
+      width: 100%;
+    }
+
+    /* ========== 左パネル ========== */
+    .unit-panel { background: #12121e; border: 1px solid #2a2a3e; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .unit-panel h3 { font-size: 11px; color: #888; margin-bottom: 4px; }
+    .unit-card { cursor: pointer; background: #1e1e30; border: 1px solid #2a2a3e; border-radius: 8px; padding: 8px; transition: border-color 0.2s; margin-bottom: 6px; }
+    .unit-card:hover { border-color: #555; }
+    .unit-card.selected { border-color: #378ADD; }
+    .unit-card-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .unit-avatar { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
+    .unit-card-name { font-size: 12px; font-weight: 500; }
+    .unit-card-stats { font-size: 10px; color: #888; line-height: 1.6; }
+    .slot-section { margin-top: 4px; padding-top: 8px; border-top: 1px solid #2a2a3e; }
+    .slot-section p { font-size: 10px; color: #666; margin-bottom: 4px; }
+    .slot-label { font-size: 10px; color: #aaa; line-height: 1.8; }
+    .slot-label span { color: #eee; font-weight: 500; }
+    .slot-buttons { display: flex; gap: 4px; margin-top: 6px; }
+    .slot-buttons button { flex: 1; font-size: 10px; padding: 4px 0; background: #1e1e30; border: 1px solid #333; border-radius: 6px; color: #ccc; cursor: pointer; }
+    .slot-buttons button:hover { background: #2a2a3e; }
+
+    /* ========== 中央パネル ========== */
+    .center-panel { display: flex; flex-direction: column; gap: 10px; }
+    #battleCanvas { display: block; width: 100%; border-radius: 12px; border: 1px solid #2a2a3e; }
+    .command-panel { background: #12121e; border: 1px solid #2a2a3e; border-radius: 12px; padding: 12px; }
+    .cmd-buttons { display: flex; gap: 8px; margin-bottom: 10px; }
+    .cmd-buttons button { flex: 1; font-size: 12px; padding: 7px 0; background: #1e1e30; border: 1px solid #333; border-radius: 8px; color: #ccc; cursor: pointer; }
+    .cmd-buttons button:hover { background: #2a2a3e; }
+    .cmd-buttons button:disabled { opacity: 0.4; cursor: default; }
+
+    /* 倍速ボタン */
+    .speed-buttons { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+    .speed-buttons span { font-size: 11px; color: #888; margin-right: 2px; }
+    .speed-btn { font-size: 11px; padding: 4px 10px; background: #1e1e30; border: 1px solid #333; border-radius: 6px; color: #ccc; cursor: pointer; }
+    .speed-btn:hover { background: #2a2a3e; }
+    .speed-btn.active { background: #2a3a5a; border-color: #378ADD; color: #378ADD; font-weight: bold; }
+
+    .hp-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+    .hp-group label { font-size: 10px; color: #888; display: block; margin-bottom: 2px; }
+    .hp-group.right label { text-align: right; }
+    .hp-track { height: 8px; background: #2a2a3e; border-radius: 4px; overflow: hidden; }
+    .hp-fill { height: 100%; border-radius: 4px; transition: width 0.2s; }
+    .hp-group .hp-val { font-size: 10px; color: #888; margin-top: 2px; }
+    .hp-group.right .hp-val { text-align: right; }
+    #log { background: #0d0d1a; border: 1px solid #2a2a3e; border-radius: 8px; padding: 8px; height: 140px; overflow-y: auto; font-size: 11px; line-height: 1.7; color: #888; }
+
+    /* ========== 右パネル ========== */
+    .info-panel { display: flex; flex-direction: column; gap: 10px; }
+    .help-panel, .update-panel { background: #12121e; border: 1px solid #2a2a3e; border-radius: 12px; padding: 12px; }
+    .help-panel h3, .update-panel h3 { font-size: 11px; color: #888; margin-bottom: 8px; }
+    .help-text { overflow-y: auto; height: 180px; font-size: 11px; line-height: 1.9; color: #bbb; }
+    .update-text { background: #0d0d1a; border: 1px solid #2a2a3e; border-radius: 8px; padding: 10px; font-size: 11px; line-height: 1.9; color: #bbb; overflow-y: auto; height: 180px; }
+    .update-text .version { color: #EF9F27; font-weight: bold; }
+
+    /* スタン表示 */
+    @keyframes stunPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 左：ユニット一覧 -->
+  <div class="unit-panel">
+    <h3>ユニット一覧</h3>
+    <div id="unit-list"></div>
+    <div class="slot-section">
+      <p>選択中のユニット</p>
+      <div class="slot-label">
+        左: <span id="left-name">-</span><br>
+        右: <span id="right-name">-</span>
+      </div>
+      <div class="slot-buttons">
+        <button onclick="setSlot('left')">左セット</button>
+        <button onclick="setSlot('right')">右セット</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中央：バトルフィールド + コマンド -->
+  <div class="center-panel">
+    <canvas id="battleCanvas" height="280"></canvas>
+    <div class="command-panel">
+
+      <!-- バトル操作ボタン -->
+      <div class="cmd-buttons">
+        <button id="btn-start" onclick="startBattle()">▶ 開始</button>
+        <button id="btn-pause" onclick="togglePause()" disabled>⏸ 停止</button>
+        <button onclick="resetBattle()">↺ リセット</button>
+      </div>
+
+      <!-- 倍速ボタン -->
+      <div class="speed-buttons">
+        <span>倍速：</span>
+        <button class="speed-btn active" onclick="setSpeed(1)">×1</button>
+        <button class="speed-btn" onclick="setSpeed(2)">×2</button>
+        <button class="speed-btn" onclick="setSpeed(4)">×4</button>
+        <button class="speed-btn" onclick="setSpeed(8)">×8</button>
+      </div>
+
+      <!-- HPバー -->
+      <div class="hp-bars">
+        <div class="hp-group">
+          <label id="hp-label-l">- HP</label>
+          <div class="hp-track"><div class="hp-fill" id="hp-bar-l" style="width:100%;background:#378ADD;"></div></div>
+          <div class="hp-val" id="hp-val-l">-</div>
+        </div>
+        <div class="hp-group right">
+          <label id="hp-label-r">- HP</label>
+          <div class="hp-track"><div class="hp-fill" id="hp-bar-r" style="width:100%;background:#EF9F27;float:right;"></div></div>
+          <div class="hp-val" id="hp-val-r">-</div>
+        </div>
+      </div>
+
+      <div id="log">ユニットを選んで「開始」を押してください。</div>
+    </div>
+  </div>
+
+  <!-- 右：説明 + バージョン -->
+  <div class="info-panel">
+    <div class="help-panel">
+      <h3>使い方</h3>
+      <div class="help-text">
+        ① 左のリストからユニットを選択<br>
+        ② 「左セット」「右セット」で配置<br>
+        ③ 「開始」でバトル開始<br>
+        <br>
+        【ステータス】<br>
+        HP = 体力<br>
+        ATK = 攻撃力<br>
+        SPD = 移動速度<br>
+        RNG = 攻撃間隔<br>
+        <br>
+        ・リセットを押すとログもリセットされます。<br>
+        ・×〇のところで倍速速度を変更できます。<br>
+      </div>
+    </div>
+    <div class="update-panel">
+      <h3>Version / Update</h3>
+      <div class="update-text">
+        <span class="version">v0.9.0</span><br>
+        ・β版完成
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="units.js"></script>
+<script>
+// =====================
+// 定数・状態
+// =====================
+let selectedUnit = null;
+let leftKey      = null;
+let rightKey     = null;
+let state        = null;
+let animId       = null;
+let paused       = false;
+let lastTime     = 0;
+let gameSpeed    = 1;   // 倍速
+
+const canvas = document.getElementById('battleCanvas');
+const ctx    = canvas.getContext('2d');
+
+// DPR対応（ぼやけ防止）
+const dpr = window.devicePixelRatio || 1;
+const H = canvas.height;
+const W = canvas.parentElement.clientWidth;
+canvas.width  = W * dpr;
+canvas.height = H * dpr;
+canvas.style.width  = W + 'px';
+canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
+
+// =====================
+// 倍速設定
+// =====================
+function setSpeed(s) {
+  gameSpeed = s;
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent === `×${s}`);
+  });
+}
+
+// =====================
+// ユニットカード生成
+// =====================
+function buildUnitList() {
+  const list = document.getElementById('unit-list');
+  list.innerHTML = '';
+  Object.entries(UNITS).forEach(([key, u]) => {
+    const card = document.createElement('div');
+    card.className = 'unit-card';
+    card.id = 'card-' + key;
+    card.onclick = () => selectUnit(key);
+    const kb  = u.knockback    ? `KB:${u.knockback}px` : '';
+    const st  = u.stunDuration ? `STUN:${u.stunDuration}ms` : '';
+    const tag = [kb, st].filter(Boolean).join(' / ');
+    card.innerHTML = `
+      <div class="unit-card-header">
+        <div class="unit-avatar" style="background:${u.color}22;color:${u.color};">${u.label}</div>
+        <span class="unit-card-name">${u.name}</span>
+      </div>
+      <div class="unit-card-stats">
+        HP:${u.hp} / ATK:${u.atk} / SPD:${u.movespeed}<br>
+        RNG:${u.range}${tag ? ' / ' + tag : ''}
+      </div>
+    `;
+    list.appendChild(card);
+  });
+  const keys = Object.keys(UNITS);
+  if (keys.length >= 2) {
+    selectUnit(keys[0]);
+    leftKey  = keys[0];
+    rightKey = keys[1];
+    document.getElementById('left-name').textContent  = UNITS[leftKey].name;
+    document.getElementById('right-name').textContent = UNITS[rightKey].name;
+    updateHpUI();
+  }
+}
+
+function selectUnit(key) {
+  selectedUnit = key;
+  document.querySelectorAll('.unit-card').forEach(el => el.classList.remove('selected'));
+  document.getElementById('card-' + key).classList.add('selected');
+}
+
+function setSlot(slot) {
+  if (!selectedUnit) return;
+  if (slot === 'left') {
+    leftKey = selectedUnit;
+    document.getElementById('left-name').textContent = UNITS[leftKey].name;
+  } else {
+    rightKey = selectedUnit;
+    document.getElementById('right-name').textContent = UNITS[rightKey].name;
+  }
+  resetBattle();
+}
+
+// =====================
+// ユニットオブジェクト生成
+// =====================
+function makeUnit(key, side) {
+  const u = UNITS[key];
+  return {
+    key, name: u.name, maxHp: u.hp, hp: u.hp,
+    atk: u.atk, movespeed: u.movespeed, range: u.range,
+    atkInterval: u.atkInterval,
+    hits: u.hits || 1,
+    hitInterval: u.hitInterval || 100,
+    type: u.type || 'ground',
+    canAttack: u.canAttack || ['ground'],
+    // ノックバック・スタン（省略時は0）
+    knockback:    u.knockback    || 0,
+    stunDuration: u.stunDuration || 0,
+    color: u.color, label: u.label,
+    x: side === 'left' ? 40 : W - 40,
+    y: u.type === 'flying' ? H / 2 - 50 : H / 2 + 30,
+    side,
+    atkTimer: 0, hitQueue: [], flashing: 0, particles: [],
+    // スタン状態
+    stunTimer: 0,   // 残りスタン時間(ms)
+    // ノックバック中の移動
+    knockbackVx: 0,
+    knockbackTimer: 0,
+  };
+}
+
+// =====================
+// バトル制御
+// =====================
+function resetBattle() {
+  cancelAnimationFrame(animId);
+  paused = false; state = null;
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-pause').disabled = true;
+  document.getElementById('btn-pause').textContent = '⏸ 停止';
+  updateHpUI(); clearCanvas();
+  document.getElementById('log').innerHTML = '';
+  addLog('リセットしました。「開始」を押すとバトル開始。', '#888');
+}
+
+function startBattle() {
+  if (!leftKey || !rightKey) { addLog('ユニットをセットしてください。', '#e24b4a'); return; }
+  if (leftKey === rightKey)  { addLog('異なるユニットを選んでください。', '#e24b4a'); return; }
+  cancelAnimationFrame(animId);
+  paused = false;
+  state = { left: makeUnit(leftKey, 'left'), right: makeUnit(rightKey, 'right'), over: false };
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-pause').disabled = false;
+  updateHpUI();
+  addLog('バトル開始！', '#639922');
+  lastTime = performance.now();
+  loop(lastTime);
+}
+
+function togglePause() {
+  paused = !paused;
+  document.getElementById('btn-pause').textContent = paused ? '▶ 再開' : '⏸ 停止';
+  if (!paused) { lastTime = performance.now(); loop(lastTime); }
+}
+
+// =====================
+// ゲームループ
+// =====================
+function loop(now) {
+  if (paused || !state || state.over) return;
+  const rawDt = Math.min(now - lastTime, 50);
+  lastTime = now;
+
+  // ✅ dtにgameSpeedを掛けるだけでOK
+  const dt = rawDt * gameSpeed;
+  update(dt);
+
+  draw();
+  animId = requestAnimationFrame(loop);
+}
+
+// =====================
+// 更新処理
+// =====================
+function update(dt) {
+  const { left: l, right: r } = state;
+
+  // パーティクル・フラッシュ・スタン・ノックバック更新
+  [l, r].forEach(u => {
+    u.flashing       = Math.max(0, u.flashing - dt);
+    u.stunTimer      = Math.max(0, u.stunTimer - dt);
+    u.knockbackTimer = Math.max(0, u.knockbackTimer - dt);
+    u.particles = u.particles.filter(p => p.life > 0);
+    u.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life -= dt; });
+
+    // ノックバック移動
+    if (u.knockbackTimer > 0) {
+      u.x += u.knockbackVx * (dt / 16);
+      // フィールド端で止める
+      u.x = Math.max(22, Math.min(W - 22, u.x));
+    }
+  });
+
+  const dx = Math.abs(l.x - r.x);
+  const dy = Math.abs(l.y - r.y);
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  const lCanTarget = l.canAttack.includes(r.type);
+  const rCanTarget = r.canAttack.includes(l.type);
+  const lCanAttack = lCanTarget && dist <= l.range + 22;
+  const rCanAttack = rCanTarget && dist <= r.range + 22;
+
+  // スタン中・ノックバック中は移動しない
+  if (lCanTarget && !lCanAttack && l.stunTimer <= 0 && l.knockbackTimer <= 0) l.x += l.movespeed * (dt / 16);
+  if (rCanTarget && !rCanAttack && r.stunTimer <= 0 && r.knockbackTimer <= 0) r.x -= r.movespeed * (dt / 16);
+
+  processAttack(l, r, lCanAttack, dt);
+  processAttack(r, l, rCanAttack, dt);
+
+  updateHpUI();
+  if (l.hp <= 0 || r.hp <= 0) {
+    state.over = true;
+    const winner = l.hp > 0 ? l : r;
+    addLog(`★ ${winner.name} の勝利！`, '#EF9F27');
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-pause').disabled = true;
+  }
+}
+
+// =====================
+// 攻撃処理（ノックバック・スタン対応）
+// =====================
+function processAttack(attacker, target, canAttack, dt) {
+  if (!attacker.canAttack.includes(target.type)) return;
+
+  // スタン中は攻撃もしない
+  if (attacker.stunTimer > 0) return;
+
+  for (const hit of attacker.hitQueue) { hit.delay -= dt; }
+  const fired = attacker.hitQueue.filter(h => h.delay <= 0);
+  attacker.hitQueue = attacker.hitQueue.filter(h => h.delay > 0);
+
+  fired.forEach(() => {
+    const dmg = attacker.atk;
+    target.hp = Math.max(0, target.hp - dmg);
+    target.flashing = 160;
+    spawnParticles(target);
+
+    let logExtra = '';
+
+    // ノックバック処理
+    if (attacker.knockback > 0) {
+      const dir = target.side === 'right' ? 1 : -1; // 後退方向
+      target.knockbackVx    = dir * (attacker.knockback / 10);
+      target.knockbackTimer = 300; // 300msかけて後退
+      logExtra += ' 【ノックバック！】';
+    }
+
+    // スタン処理
+    if (attacker.stunDuration > 0) {
+      target.stunTimer = attacker.stunDuration;
+      logExtra += ` 【スタン ${attacker.stunDuration}ms！】`;
+    }
+
+    addLog(`${attacker.name} → ${target.name} に ${dmg} ダメージ！${logExtra}`, attacker.color);
+  });
+
+  if (!canAttack) return;
+  attacker.atkTimer += dt;
+  if (attacker.atkTimer >= attacker.atkInterval) {
+    attacker.atkTimer = 0;
+    for (let i = 0; i < attacker.hits; i++) {
+      attacker.hitQueue.push({ delay: i * attacker.hitInterval });
+    }
+  }
+}
+
+// =====================
+// パーティクル
+// =====================
+function spawnParticles(unit) {
+  for (let i = 0; i < 8; i++) {
+    unit.particles.push({
+      x: unit.x, y: unit.y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4 - 1,
+      life: 350, color: unit.color,
+    });
+  }
+}
+
+// =====================
+// 描画
+// =====================
+function clearCanvas() {
+  ctx.fillStyle = '#12121e'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(30, 50, 80, 0.3)';
+  ctx.fillRect(0, 0, W, H / 2);
+  const groundY = H / 2 + 55;
+  ctx.strokeStyle = '#3a3a2a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke();
+  ctx.font = '10px -apple-system, Arial, sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#6EC6FF'; ctx.fillText('空', 6, 16);
+  ctx.fillStyle = '#FFC46B'; ctx.fillText('地上', 6, groundY + 14);
+  ctx.strokeStyle = '#1e1e30'; ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+}
+
+function drawUnit(u) {
+  // パーティクル
+  u.particles.forEach(p => {
+    ctx.save(); ctx.globalAlpha = Math.max(0, p.life / 350);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(Math.round(p.x), Math.round(p.y), 3, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  // スタン中：黄色い電撃リング
+  if (u.stunTimer > 0) {
+    ctx.save();
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(Date.now() / 80);
+    ctx.beginPath(); ctx.arc(Math.round(u.x), Math.round(u.y), 28, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+    // ⚡マーク
+    ctx.save();
+    ctx.font = '14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('⚡', Math.round(u.x), Math.round(u.y) - 42);
+    ctx.restore();
+  }
+
+  // ヒットフラッシュ
+  if (u.flashing > 0) {
+    ctx.save(); ctx.globalAlpha = 0.45; ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(Math.round(u.x), Math.round(u.y), 26, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  // 本体
+  ctx.fillStyle = u.color;
+  ctx.beginPath(); ctx.arc(Math.round(u.x), Math.round(u.y), 22, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(u.label, Math.round(u.x), Math.round(u.y));
+
+  // 名前
+  ctx.font = '11px sans-serif'; ctx.fillStyle = '#ddd';
+  ctx.fillText(u.name, Math.round(u.x), Math.round(u.y) - 34);
+
+  // HPバー
+  const barW = 48, barH = 5, pct = u.hp / u.maxHp;
+  ctx.fillStyle = '#2a2a3e'; ctx.fillRect(Math.round(u.x - barW/2), Math.round(u.y + 28), barW, barH);
+  ctx.fillStyle = pct > 0.5 ? '#1D9E75' : pct > 0.25 ? '#EF9F27' : '#E24B4A';
+  ctx.fillRect(Math.round(u.x - barW/2), Math.round(u.y + 28), Math.round(barW * pct), barH);
+
+  // スタン残り時間バー（黄色）
+  if (u.stunTimer > 0 && UNITS[u.key] && UNITS[u.key].stunDuration) {
+    const stunPct = u.stunTimer / UNITS[u.key].stunDuration;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(Math.round(u.x - barW/2), Math.round(u.y + 35), barW, 3);
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(Math.round(u.x - barW/2), Math.round(u.y + 35), Math.round(barW * stunPct), 3);
+  }
+}
+
+function drawRangeLine(l, r) {
+  const dx = Math.abs(l.x - r.x);
+  const dy = Math.abs(l.y - r.y);
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const lCanTarget = l.canAttack.includes(r.type);
+  const rCanTarget = r.canAttack.includes(l.type);
+
+  ctx.save();
+  ctx.globalAlpha = 0.18; ctx.lineWidth = 1; ctx.setLineDash([3, 5]);
+  ctx.strokeStyle = lCanTarget ? l.color : '#555';
+  ctx.beginPath(); ctx.arc(Math.round(l.x), Math.round(l.y), l.range + 22, 0, Math.PI*2); ctx.stroke();
+  ctx.strokeStyle = rCanTarget ? r.color : '#555';
+  ctx.beginPath(); ctx.arc(Math.round(r.x), Math.round(r.y), r.range + 22, 0, Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]); ctx.restore();
+
+  const lInRange = lCanTarget && dist <= l.range + 22;
+  const rInRange = rCanTarget && dist <= r.range + 22;
+  if (lInRange || rInRange) {
+    ctx.save(); ctx.strokeStyle = '#E24B4A'; ctx.lineWidth = 1; ctx.globalAlpha = 0.6;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(Math.round(l.x), Math.round(l.y)); ctx.lineTo(Math.round(r.x), Math.round(r.y)); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
+
+  if (!lCanTarget || !rCanTarget) {
+    ctx.save(); ctx.font = '10px sans-serif'; ctx.fillStyle = '#888'; ctx.textAlign = 'center';
+    if (!lCanTarget) ctx.fillText('対空不可', Math.round(l.x), Math.round(l.y + 46));
+    if (!rCanTarget) ctx.fillText('対空不可', Math.round(r.x), Math.round(r.y + 46));
+    ctx.restore();
+  }
+}
+
+function draw() {
+  clearCanvas();
+  if (!state) return;
+  drawRangeLine(state.left, state.right);
+  drawUnit(state.left);
+  drawUnit(state.right);
+}
+
+// =====================
+// UI更新
+// =====================
+function updateHpUI() {
+  if (!state) {
+    if (!leftKey || !rightKey) return;
+    const lu = UNITS[leftKey], ru = UNITS[rightKey];
+    document.getElementById('hp-label-l').textContent = lu.name + ' HP';
+    document.getElementById('hp-label-r').textContent = ru.name + ' HP';
+    document.getElementById('hp-bar-l').style.width = '100%';
+    document.getElementById('hp-bar-r').style.width = '100%';
+    document.getElementById('hp-val-l').textContent = lu.hp + ' / ' + lu.hp;
+    document.getElementById('hp-val-r').textContent = ru.hp + ' / ' + ru.hp;
+    return;
+  }
+  const l = state.left, r = state.right;
+  document.getElementById('hp-bar-l').style.width = Math.round(l.hp / l.maxHp * 100) + '%';
+  document.getElementById('hp-bar-r').style.width = Math.round(r.hp / r.maxHp * 100) + '%';
+  document.getElementById('hp-val-l').textContent = l.hp + ' / ' + l.maxHp;
+  document.getElementById('hp-val-r').textContent = r.hp + ' / ' + r.maxHp;
+}
+
+function addLog(msg, color) {
+  const log = document.getElementById('log');
+  const div = document.createElement('div');
+  div.style.color = color || '#888';
+  div.textContent = msg;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+buildUnitList();
+clearCanvas();
+</script>
+</body>
+</html>
