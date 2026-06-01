@@ -51,7 +51,7 @@ const UNITS = {
     range:       50,
     atkInterval: 2000,
     hits:        10,
-    hitInterval: 200,
+    hitInterval: 180,
     type:      'flying',
     canAttack: ['ground', 'flying'],
     knockback: 0,
