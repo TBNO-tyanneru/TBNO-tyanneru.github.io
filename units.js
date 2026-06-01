@@ -67,8 +67,8 @@ const UNITS = {
     movespeed:   2.0,
     range:       65,
     atkInterval: 2500,
-    hits:        2,
-    hitInterval: 200,
+    hits:        1,
+    hitInterval: 0,
     type:      'flying',
     canAttack: ['ground', 'flying'],
     knockback: 0,           // ノックバックあり
